@@ -140,14 +140,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v4
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign image
         run: |
           cosign sign --yes ${{ steps.image_ref.outputs.ref }}@${{ steps.docker_build.outputs.digest }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ steps.image_ref.outputs.ref }}@${{ steps.docker_build.outputs.digest }}"
           format: "sarif"
