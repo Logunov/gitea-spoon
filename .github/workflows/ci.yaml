@@ -99,6 +99,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Compute image reference
+        id: image_ref
+        run: |
+          echo "ref=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Determine image tag
         id: tag
         run: |
@@ -119,7 +124,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image_ref.outputs.ref }}
           flavor: |
             latest=true
           tags: |
@@ -139,12 +144,12 @@ jobs:
 
       - name: Sign image
         run: |
-          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}
+          cosign sign --yes ${{ steps.image_ref.outputs.ref }}@${{ steps.docker_build.outputs.digest }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0
         with:
-          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}"
+          image-ref: "${{ steps.image_ref.outputs.ref }}@${{ steps.docker_build.outputs.digest }}"
           format: "sarif"
           output: "trivy-results.sarif"
 
@@ -162,6 +167,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+
+      - name: Compute image reference
+        id: image_ref
+        run: |
+          echo "ref=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Determine release tag
         id: tag
@@ -185,7 +195,7 @@ jobs:
           check-latest: true
 
       - name: Build Installer
-        run: make build-installer IMG=ghcr.io/${{ github.repository}}:${{ steps.tag.outputs.tag }}
+        run: make build-installer IMG=${{ steps.image_ref.outputs.ref }}:${{ steps.tag.outputs.tag }}
 
       - name: Upload dist/install.yaml to release
         uses: svenstaro/upload-release-action@v2
