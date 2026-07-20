@@ -128,7 +128,9 @@ jobs:
           flavor: |
             latest=true
           tags: |
-            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ steps.tag.outputs.tag }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
