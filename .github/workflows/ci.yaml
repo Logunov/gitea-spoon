@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  scan:
+    name: Security & Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Hadolint
+      uses: hadolint/hadolint-action@v3.3.0
+      with:
+        dockerfile: Dockerfile
+
+    - name: Gosec
+      uses: securego/gosec@master
+      with:
+        args: '-fmt sarif -out results.sarif ./...'
+
+    - name: Upload SARIF
+      if: always()
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: results.sarif
+
+    - uses: actions/setup-go@v7
+      with:
+        go-version: 1.26
+        cache-dependency-path: go.sum
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v9
+      with:
+        version: latest
+        args: --timeout=5m --config=.golangci.yml
+
+  semver:
+    name: Version
+    runs-on: ubuntu-latest
+    needs: scan
+    if: github.ref_type == 'branch'
+    permissions:
+      contents: write
+    outputs:
+      new_tag: ${{ steps.tag.outputs.new_tag }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Bump version and push tag
+      id: tag
+      uses: mathieudutour/github-tag-action@v6.2
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        default_bump: patch
+        release_branches: main
+
+  build-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [scan, semver]
+    if: always() && !failure() && !cancelled()
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Determine image tag
+      id: tag
+      run: |
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${{ needs.semver.outputs.new_tag }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        flavor: |
+          latest=true
+        tags: |
+          type=raw,value=${{ steps.tag.outputs.tag }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+      id: docker_build
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Set up Cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6
+
+    - name: Sign image
+      run: |
+        cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.docker_build.outputs.digest }}'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  publish:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [build-push, semver]
+    if: always() && !failure() && !cancelled() && (needs.semver.outputs.new_tag != '' || github.ref_type == 'tag')
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Determine release tag
+      id: tag
+      run: |
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${{ needs.semver.outputs.new_tag }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create release
+      run: |
+        gh release create ${{ steps.tag.outputs.tag }} --title "Release ${{ steps.tag.outputs.tag }}" --generate-notes -R $GITHUB_REPOSITORY
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+    - name: Install Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: 1.26
+        check-latest: true
+
+    - name: Build Installer
+      run: make build-installer IMG=ghcr.io/${{ github.repository}}:${{ steps.tag.outputs.tag }}
+
+    - name: Upload dist/install.yaml to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: dist/install.yaml
+        asset_name: install.yaml
+        tag: ${{ steps.tag.outputs.tag }}
+        overwrite: true
