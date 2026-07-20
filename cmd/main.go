@@ -55,6 +55,17 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+func getNamespace() string {
+	if ns := os.Getenv("WATCH_NAMESPACE"); ns != "" {
+		return ns
+	}
+	data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err == nil && len(data) > 0 {
+		return string(data)
+	}
+	return "default"
+}
+
 func main() {
 	var metricsAddr string
 	// var enableLeaderElection bool
@@ -143,7 +154,7 @@ func main() {
 		// LeaderElectionReleaseOnCancel: true,
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{
-				"default": {},
+				getNamespace(): {},
 			},
 		},
 	})
