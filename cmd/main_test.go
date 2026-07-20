@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"os"
 	"testing"
 )
 
@@ -31,7 +30,7 @@ func TestGetNamespace_FromEnv(t *testing.T) {
 }
 
 func TestGetNamespace_FallbackToDefault(t *testing.T) {
-	os.Unsetenv("WATCH_NAMESPACE")
+	t.Setenv("WATCH_NAMESPACE", "")
 	got := getNamespace()
 	if got != "default" {
 		t.Errorf("getNamespace() = %q, want %q", got, "default")
