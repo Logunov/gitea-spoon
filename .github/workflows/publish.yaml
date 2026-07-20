@@ -2,10 +2,6 @@ name: publish
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'release-*'
-      - 'master'
-      - 'main'
     tags:
       - 'v*'
       - '!pkg*'
@@ -18,7 +14,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     steps:
     - run: |
         gh release create ${{ github.ref_name }} --title "Release ${{ github.ref_name }}" --generate-notes -R $GITHUB_REPOSITORY
