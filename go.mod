@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	code.gitea.io/gitea v1.26.4
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	hyperspike.io/gitea-operator v0.0.16
 	k8s.io/api v0.36.3
