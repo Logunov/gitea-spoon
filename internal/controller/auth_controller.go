@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,12 +27,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	model "code.gitea.io/gitea/models/auth"
-	"code.gitea.io/gitea/models/db"
-	"code.gitea.io/gitea/modules/setting"
 	service "code.gitea.io/gitea/services/auth"
 	"code.gitea.io/gitea/services/auth/source/oauth2"
-
 	hyperv1 "hyperspike.io/gitea-operator/api/v1"
+	"hyperspike.io/gitea-spoon/internal/giteadb"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -107,7 +104,7 @@ func (r *AuthReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 func (r *AuthReconciler) addSource(ctx context.Context, auth *hyperv1.Auth) error {
 	logger := log.FromContext(ctx)
-	if err := initDB(ctx); err != nil {
+	if err := giteadb.Init(ctx); err != nil {
 		logger.Error(err, "Failed to initialize database")
 		return err
 	}
@@ -146,7 +143,7 @@ func (r *AuthReconciler) addSource(ctx context.Context, auth *hyperv1.Auth) erro
 
 func (r *AuthReconciler) deleteSource(ctx context.Context, auth *hyperv1.Auth) error {
 	logger := log.FromContext(ctx)
-	if err := initDB(ctx); err != nil {
+	if err := giteadb.Init(ctx); err != nil {
 		logger.Error(err, "Failed to initialize database", "name", auth.Name)
 		return err
 	}
@@ -156,26 +153,6 @@ func (r *AuthReconciler) deleteSource(ctx context.Context, auth *hyperv1.Auth) e
 	}
 
 	return service.DeleteSource(ctx, source)
-}
-
-func initDB(ctx context.Context) error {
-	logger := log.FromContext(ctx)
-	setting.InitCfgProvider("/data/gitea/conf/app.ini")
-	// setting.LoadCommonSettings()
-	// setting.MustInstalled()
-	setting.LoadDBSetting()
-
-	if setting.Database.Type == "" {
-		err := fmt.Errorf(`database settings are missing from the configuration file: %q
-Ensure you are running in the correct environment or set the correct configuration file with -c.
-If this is the intended configuration file complete the [database] section`, setting.CustomConf)
-		logger.Error(err, "Failed to load database settings")
-		return err
-	}
-	if err := db.InitEngine(ctx); err != nil {
-		return fmt.Errorf("unable to initialize the database using the configuration in %q. error: %w", setting.CustomConf, err)
-	}
-	return nil
 }
 
 // A utility function to get a secret via a secretkeyref/secretkeyselector

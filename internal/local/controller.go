@@ -21,19 +21,22 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/models/db"
 	"code.gitea.io/gitea/models/user"
-	"code.gitea.io/gitea/modules/setting"
+
+	"hyperspike.io/gitea-spoon/internal/giteadb"
 )
 
 type Local struct {
-	ctx context.Context
+	ctx        context.Context
+	httpClient *http.Client
+	baseURL    string
 }
 
 // NewLocal returns a new Local
@@ -41,7 +44,24 @@ func New(ctx context.Context) *Local {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
-	return &Local{ctx: ctx}
+
+	baseURL := "http://localhost:3000"
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if os.Getenv("GITEA_TLS") != "" {
+		baseURL = "https://localhost:3000"
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true, // #nosec G402
+			MinVersion:         tls.VersionTLS12,
+		}
+	}
+
+	return &Local{
+		ctx: ctx,
+		httpClient: &http.Client{
+			Transport: transport,
+		},
+		baseURL: baseURL,
+	}
 }
 
 func sanitizeInput(input string) string {
@@ -73,7 +93,7 @@ func (l *Local) reconcileAdminPassword() error {
 	if password == "" {
 		return fmt.Errorf("GITEA_ADMIN_PASSWORD is not set")
 	}
-	if err := l.initDB(); err != nil {
+	if err := giteadb.Init(l.ctx); err != nil {
 		return err
 	}
 	slog.Info("reconciling admin password", slog.String("username", sanitizeInput(username))) // #nosec G706 - sanitizeInput is used to prevent log injection
@@ -98,18 +118,7 @@ func (l *Local) reconcileAdminPassword() error {
 }
 
 func (l *Local) validateAdminPassword(username, password string) error {
-	url := "http://localhost:3000"
-	client := http.Client{}
-	if os.Getenv("GITEA_TLS") != "" {
-		url = "https://localhost:3000"
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // #nosec G402
-				MinVersion:         tls.VersionTLS12,
-			},
-		}
-	}
-	req, err := http.NewRequest("GET", url+"/api/v1/user", nil)
+	req, err := http.NewRequestWithContext(l.ctx, http.MethodGet, l.baseURL+"/api/v1/user", nil)
 	if err != nil {
 		return fmt.Errorf("unable to create request: %w", err)
 	}
@@ -117,31 +126,16 @@ func (l *Local) validateAdminPassword(username, password string) error {
 	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 	req.Header.Set("Authorization", "Basic "+auth)
 
-	resp, err := client.Do(req)
+	resp, err := l.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("unable to create request: %w", err)
+		return fmt.Errorf("unable to execute request: %w", err)
 	}
-	if resp.StatusCode != 200 {
+	defer func() { _ = resp.Body.Close() }()
+
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unable to authenticate user: %s", resp.Status)
 	}
 	slog.Info("successfully authenticated user", slog.String("username", sanitizeInput(username))) // #nosec G706 - sanitizeInput is used to prevent log injection
-	return nil
-}
-
-func (l *Local) initDB() error {
-	setting.InitCfgProvider("/data/gitea/conf/app.ini")
-	// setting.LoadCommonSettings()
-	// setting.MustInstalled()
-	setting.LoadDBSetting()
-
-	if setting.Database.Type == "" {
-		err := fmt.Errorf(`database settings are missing from the configuration file: %q
-Ensure you are running in the correct environment or set the correct configuration file with -c.
-If this is the intended configuration file complete the [database] section`, setting.CustomConf)
-		return fmt.Errorf("failed to load database settings: %w", err)
-	}
-	if err := db.InitEngine(l.ctx); err != nil {
-		return fmt.Errorf("unable to initialize the database using the configuration in %q. Error: %w", setting.CustomConf, err)
-	}
 	return nil
 }
