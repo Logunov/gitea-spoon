@@ -34,10 +34,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Gosec
-        uses: securego/gosec@v2.29.0
+      - uses: actions/setup-go@v7
         with:
-          args: "-fmt sarif -out results.sarif -concurrency=4 -exclude-dir=vendor -exclude-dir=test ./..."
+          go-version: 1.27
+          cache-dependency-path: go.sum
+
+      - name: Gosec
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@17ad2dd7533fd4c773d916e2bc81446917d593b5
+          "$(go env GOPATH)/bin/gosec" -fmt sarif -out results.sarif -concurrency=4 -exclude-dir=vendor -exclude-dir=test ./...
 
       - name: Upload SARIF
         if: always()
