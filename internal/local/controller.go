@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"code.gitea.io/gitea/models/user"
+	"gitea.dev/models/user"
 
 	"hyperspike.io/gitea-spoon/internal/giteadb"
 )

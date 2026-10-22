@@ -26,9 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	model "code.gitea.io/gitea/models/auth"
-	service "code.gitea.io/gitea/services/auth"
-	"code.gitea.io/gitea/services/auth/source/oauth2"
+	model "gitea.dev/models/auth"
+	service "gitea.dev/services/auth"
+	"gitea.dev/services/auth/source/oauth2"
 	hyperv1 "hyperspike.io/gitea-operator/api/v1"
 	"hyperspike.io/gitea-spoon/internal/giteadb"
 	corev1 "k8s.io/api/core/v1"
