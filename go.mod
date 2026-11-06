@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	gitea.dev v1.28.0-dev.0.20261018175036-829b49c1ae96 // Gitea 28.2.0
-	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	hyperspike.io/gitea-operator v0.0.16
 	k8s.io/api v0.37.2
